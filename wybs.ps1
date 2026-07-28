@@ -202,7 +202,7 @@ trap {
     # assume they exist - otherwise the trap masks the real failure.
     if (Get-Command Clear-Status -ErrorAction SilentlyContinue) { Clear-Status }
     Write-Host ''
-    Write-Host ('YABS aborted: ' + $_.Exception.Message) -ForegroundColor Red
+    Write-Host ('WYBS aborted: ' + $_.Exception.Message) -ForegroundColor Red
     Write-Host ('  at line ' + $_.InvocationInfo.ScriptLineNumber + ': ' + $_.InvocationInfo.Line.Trim())
     $tmp = Get-Variable -Name YABS_PATH -Scope Script -ErrorAction SilentlyContinue
     if ($tmp -and $tmp.Value -and (Test-Path -LiteralPath $tmp.Value)) {
@@ -644,9 +644,9 @@ if ($Help) {
     Out-Line '       -SkipNet (-n)     : skips the network information lookup and print out'
     Out-Line '       -ReduceNet (-r)   : reduce number of iperf3 network locations (to only three)'
     Out-Line '       -GB4 / -GB5 / -GB9 / -GB6 : geekbench version selection (default: GB6)'
-    Out-Line '       -PrintJson (-j)   : print jsonified YABS results at conclusion of test'
-    Out-Line '       -JsonFile <file> (-w) : write jsonified YABS results to disk'
-    Out-Line '       -JsonSend <url> (-s)  : send jsonified YABS results to URL'
+    Out-Line '       -PrintJson (-j)   : print jsonified WYBS results at conclusion of test'
+    Out-Line '       -JsonFile <file> (-w) : write jsonified WYBS results to disk'
+    Out-Line '       -JsonSend <url> (-s)  : send jsonified WYBS results to URL'
     Out-Line '       -IperfServers <s> (-p): custom iperf servers'
     Out-Line '                               format: host:port_range:name:location:network_modes'
     Out-Line '                               example: -IperfServers "example.com:5201-5210:MyServer:New York (10G):IPv4|IPv6"'
@@ -1612,25 +1612,48 @@ function Start-Geekbench {
     $GEEKBENCH_URL = ($urlLines[0] -split '\s+' | Where-Object { $_ -match '^https://browser' } | Select-Object -First 1)
     $GEEKBENCH_URL_CLAIM = ($urlLines[-1] -split '\s+' | Where-Object { $_ -match '^https://browser' } | Select-Object -First 1)
 
-    Start-Sleep -Seconds 10
-
+    # The scores only exist on the Geekbench Browser page (exporting them locally is a Pro
+    # feature), and that page is behind Cloudflare. Datacenter IPs get challenged far more
+    # aggressively than residential ones, so a single attempt is not enough on a VPS: retry a
+    # few times, and if it still fails say so instead of printing two blank cells.
     $single = ''
     $multi = ''
-    $html = Invoke-HttpGet $GEEKBENCH_URL 20
-    if ($html) {
-        $tag = if ($Version -eq 4) { 'span' } else { 'div' }
+    $tag = if ($Version -eq 4) { 'span' } else { 'div' }
+    $fetchNote = ''
+
+    foreach ($waitFor in @(10, 15, 30)) {
+        Start-Sleep -Seconds $waitFor
+        $html = Invoke-HttpGet $GEEKBENCH_URL 30
+        if (-not $html) { $fetchNote = 'result page could not be fetched'; continue }
+        if ($html -match 'Just a moment|cf_chl|Attention Required') {
+            $fetchNote = 'result page blocked by Cloudflare from this host'
+            continue
+        }
         $matchesFound = [regex]::Matches($html, "<$tag class=['`"]score['`"]>\s*(\d+)\s*</$tag>")
-        if ($matchesFound.Count -ge 1) { $single = $matchesFound[0].Groups[1].Value }
-        if ($matchesFound.Count -ge 2) { $multi = $matchesFound[$matchesFound.Count - 1].Groups[1].Value }
+        if ($matchesFound.Count -ge 1) {
+            $single = $matchesFound[0].Groups[1].Value
+            if ($matchesFound.Count -ge 2) { $multi = $matchesFound[$matchesFound.Count - 1].Groups[1].Value }
+            $fetchNote = ''
+            break
+        }
+        $fetchNote = 'scores not present on the result page yet'
     }
+
+    $singleText = $single
+    $multiText = $multi
+    if (-not $single) { $singleText = 'see full test' }
+    if (-not $multi) { $multiText = 'see full test' }
 
     Out-Line "Geekbench $Version Benchmark Test:"
     Out-Line '---------------------------------'
     Out-Row @('Test', 'Value') @(15, 30)
     Out-Row @('', '') @(15, 30)
-    Out-Row @('Single Core', $single) @(15, 30)
-    Out-Row @('Multi Core', $multi) @(15, 30)
+    Out-Row @('Single Core', $singleText) @(15, 30)
+    Out-Row @('Multi Core', $multiText) @(15, 30)
     Out-Row @('Full Test', $GEEKBENCH_URL) @(15, 60)
+    if ($fetchNote) {
+        Out-Line "Note: $fetchNote - open the link above to see the scores."
+    }
 
     if ($WANT_JSON) {
         $s = if ($single) { $single } else { 'null' }
@@ -1661,9 +1684,9 @@ Remove-Item -LiteralPath $YABS_PATH -Recurse -Force -ErrorAction SilentlyContinu
 $YABS_END_TIME = [long]([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
 $timeTaken = $YABS_END_TIME - $YABS_START_TIME
 if ($timeTaken -gt 60) {
-    Out-Line ('YABS completed in {0} min {1} sec' -f [int]($timeTaken / 60), ($timeTaken % 60))
+    Out-Line ('WYBS completed in {0} min {1} sec' -f [int]($timeTaken / 60), ($timeTaken % 60))
 } else {
-    Out-Line ('YABS completed in {0} sec' -f $timeTaken)
+    Out-Line ('WYBS completed in {0} sec' -f $timeTaken)
 }
 
 if ($WANT_JSON) {
