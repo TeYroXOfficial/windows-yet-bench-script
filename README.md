@@ -9,7 +9,35 @@ Benchmarks disk, network and CPU performance on Windows — no WSL, no Cygwin, n
 | `wybs.cmd` | launcher for cmd.exe / double-click (bypasses the execution policy) |
 | `bin\win\<arch>\` | cache for automatically downloaded tools |
 
-## Quick start
+## How to Run
+
+Paste this into PowerShell — nothing to clone, download or install first:
+
+```powershell
+irm https://raw.githubusercontent.com/TeYroXOfficial/windows-yet-bench-script/main/wybs.ps1 | iex
+```
+
+With flags — `iex` cannot take arguments, so the script is run as a scriptblock:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/TeYroXOfficial/windows-yet-bench-script/main/wybs.ps1))) -ReduceNet
+```
+
+From cmd.exe:
+
+```bat
+powershell -NoProfile -Command "irm https://raw.githubusercontent.com/TeYroXOfficial/windows-yet-bench-script/main/wybs.ps1 | iex"
+```
+
+This works under the default `Restricted` execution policy, because the policy applies to script
+files on disk, not to code held in memory. On an older system where TLS 1.2 is not negotiated by
+default, prepend `[Net.ServicePointManager]::SecurityProtocol = 'Tls12';` to the command.
+
+Started this way the script has no file of its own, so it caches the tools it downloads in the
+**current directory** (`.\bin\win\<arch>`) — Geekbench alone is about 250 MB. Add `-SkipGeekbench`,
+or point `-BinDir` at a permanent location, if that is not what you want.
+
+## Running a local copy
 
 Simplest, with no changes to your system:
 
@@ -51,7 +79,7 @@ After restarting the terminal, `wybs -ReduceNet` works in cmd.exe.
 **Caveat:** in PowerShell the bare name `wybs` resolves to `wybs.ps1` rather than `wybs.cmd`, so there
 you still need `RemoteSigned`. Alternative: keep `wybs.cmd` in a directory on PATH and `wybs.ps1` outside it.
 
-### Equivalent of `curl -sL yabs.sh | bash`
+### Running from memory
 
 The execution policy applies to files, not to in-memory code, so this works even under `Restricted`:
 
@@ -65,11 +93,6 @@ With arguments (`iex` does not accept them, so a scriptblock is needed):
 & ([scriptblock]::Create((Get-Content .\wybs.ps1 -Raw))) -ReduceNet -SkipGeekbench
 ```
 
-From a URL, once you host the file somewhere:
-
-```powershell
-& ([scriptblock]::Create((irm https://your-host/wybs.ps1))) -ReduceNet
-```
 
 Run from memory, the script does not know its own path, so it puts the `bin\win\<arch>` cache in the
 current directory. To reuse already-downloaded tools, run it from the project directory or pass
